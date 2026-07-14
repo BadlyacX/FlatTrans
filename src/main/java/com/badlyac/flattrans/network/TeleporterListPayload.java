@@ -11,13 +11,14 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
-/** S2C：玩家打開傳送裝置時，伺服器送來可選目的地清單。 */
-public record TeleporterListPayload(BlockPos source, List<TeleporterEntry> destinations) implements CustomPacketPayload {
+/** S2C：玩家打開傳送裝置時，伺服器送來這個裝置目前的名字，以及可選目的地清單。 */
+public record TeleporterListPayload(BlockPos source, String sourceName, List<TeleporterEntry> destinations) implements CustomPacketPayload {
     public static final Type<TeleporterListPayload> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(FlatTrans.MODID, "teleporter_list"));
 
     public static final StreamCodec<ByteBuf, TeleporterListPayload> STREAM_CODEC = StreamCodec.composite(
             BlockPos.STREAM_CODEC, TeleporterListPayload::source,
+            ByteBufCodecs.STRING_UTF8, TeleporterListPayload::sourceName,
             TeleporterEntry.STREAM_CODEC.apply(ByteBufCodecs.list()), TeleporterListPayload::destinations,
             TeleporterListPayload::new);
 

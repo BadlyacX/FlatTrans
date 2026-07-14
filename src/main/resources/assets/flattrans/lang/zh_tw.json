@@ -2,6 +2,8 @@
   "itemGroup.flattrans": "平運",
   "block.flattrans.teleporter": "平運",
   "screen.flattrans.teleporter.title": "選擇傳送目的地",
+  "screen.flattrans.teleporter.name_field": "傳送點名稱",
+  "screen.flattrans.teleporter.default_name": "teleporter",
   "screen.flattrans.teleporter.empty": "找不到其他傳送裝置",
   "screen.flattrans.teleporter.page": "第 %s / %s 頁",
   "message.flattrans.destination_missing": "目的地的傳送裝置已不存在！"

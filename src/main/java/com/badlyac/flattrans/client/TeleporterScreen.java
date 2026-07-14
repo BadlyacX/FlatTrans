@@ -2,32 +2,41 @@ package com.badlyac.flattrans.client;
 
 import com.badlyac.flattrans.network.TeleportRequestPayload;
 import com.badlyac.flattrans.network.TeleporterEntry;
+import com.badlyac.flattrans.network.TeleporterRenamePayload;
 
 import java.util.List;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.PacketDistributor;
 
-/** 傳送目的地選擇畫面：清單由伺服器提供，點選後送出傳送請求。 */
+/** 傳送目的地選擇畫面：清單由伺服器提供，點選後送出傳送請求；也可以在這裡幫目前的裝置改名。 */
 public class TeleporterScreen extends Screen {
     private static final int BUTTONS_PER_PAGE = 6;
     private static final int BUTTON_WIDTH = 220;
     private static final int BUTTON_HEIGHT = 20;
     private static final int BUTTON_SPACING = 24;
-    private static final int LIST_TOP = 40;
+    private static final int NAME_ROW_Y = 36;
+    private static final int LIST_TOP = 66;
+    private static final int MAX_NAME_LENGTH = 32;
 
     private final BlockPos source;
+    private final String initialSourceName;
     private final List<TeleporterEntry> destinations;
     private int page = 0;
+    private EditBox nameBox;
 
-    public TeleporterScreen(BlockPos source, List<TeleporterEntry> destinations) {
+    public TeleporterScreen(BlockPos source, String sourceName, List<TeleporterEntry> destinations) {
         super(Component.translatable("screen.flattrans.teleporter.title"));
         this.source = source;
+        this.initialSourceName = sourceName;
         this.destinations = destinations;
     }
 
@@ -37,6 +46,14 @@ public class TeleporterScreen extends Screen {
 
     @Override
     protected void init() {
+        // 換頁時保留玩家已輸入但尚未送出的名字，避免重建畫面把它蓋掉
+        String currentValue = nameBox != null ? nameBox.getValue() : initialSourceName;
+        nameBox = new EditBox(font, width / 2 - 100, NAME_ROW_Y, 200, 20,
+                Component.translatable("screen.flattrans.teleporter.name_field"));
+        nameBox.setMaxLength(MAX_NAME_LENGTH);
+        nameBox.setValue(currentValue);
+        addRenderableWidget(nameBox);
+
         int start = page * BUTTONS_PER_PAGE;
         int end = Math.min(start + BUTTONS_PER_PAGE, destinations.size());
         for (int i = start; i < end; i++) {
@@ -66,14 +83,22 @@ public class TeleporterScreen extends Screen {
     }
 
     private Component labelFor(TeleporterEntry entry) {
-        BlockPos pos = entry.pos();
+        BlockPos pos = entry.pos().pos();
         String coords = "(" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + ")";
-        return entry.name().isEmpty()
-                ? Component.literal(coords)
-                : Component.literal(entry.name() + " " + coords);
+        String name = entry.name().isEmpty()
+                ? Component.translatable("screen.flattrans.teleporter.default_name").getString()
+                : entry.name();
+
+        // 跨維度的目的地額外標示所在維度，避免玩家搞混座標所屬的世界
+        boolean sameDimension = Minecraft.getInstance().level != null
+                && Minecraft.getInstance().level.dimension().equals(entry.pos().dimension());
+        if (sameDimension) {
+            return Component.literal(name + " " + coords);
+        }
+        return Component.literal(name + " " + coords + " [" + entry.pos().dimension().location().getPath() + "]");
     }
 
-    private void teleportTo(BlockPos target) {
+    private void teleportTo(GlobalPos target) {
         PacketDistributor.sendToServer(new TeleportRequestPayload(source, target));
         onClose();
     }
@@ -95,6 +120,17 @@ public class TeleporterScreen extends Screen {
             int bottomY = LIST_TOP + BUTTONS_PER_PAGE * BUTTON_SPACING + 8;
             guiGraphics.drawCenteredString(font, pageText, width / 2, bottomY - 12, 0xAAAAAA);
         }
+    }
+
+    @Override
+    public void onClose() {
+        if (nameBox != null) {
+            String newName = nameBox.getValue().trim();
+            if (!newName.equals(initialSourceName)) {
+                PacketDistributor.sendToServer(new TeleporterRenamePayload(source, newName));
+            }
+        }
+        super.onClose();
     }
 
     @Override

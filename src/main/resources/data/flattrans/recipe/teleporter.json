@@ -1,0 +1,23 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "SSS",
+    "TNT"
+  ],
+  "group": "flattrans:teleporter",
+  "key": {
+    "S": {
+      "item": "minecraft:smooth_stone"
+    },
+    "T": {
+      "item": "minecraft:ender_eye"
+    },
+    "N": {
+      "item": "minecraft:netherite_ingot"
+    }
+  },
+  "result": {
+    "id": "flattrans:teleporter",
+    "count": 1
+  }
+}

@@ -2,6 +2,8 @@
   "itemGroup.flattrans": "Flat Trans",
   "block.flattrans.teleporter": "Flat Trans",
   "screen.flattrans.teleporter.title": "Select Teleport Destination",
+  "screen.flattrans.teleporter.name_field": "Teleporter Name",
+  "screen.flattrans.teleporter.default_name": "Teleporter",
   "screen.flattrans.teleporter.empty": "No other teleporters found",
   "screen.flattrans.teleporter.page": "Page %s / %s",
   "message.flattrans.destination_missing": "The destination teleporter no longer exists!"

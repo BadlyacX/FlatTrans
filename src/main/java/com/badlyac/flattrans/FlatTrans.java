@@ -6,6 +6,7 @@ import com.badlyac.flattrans.client.ClientPayloadHandler;
 import com.badlyac.flattrans.network.ServerPayloadHandler;
 import com.badlyac.flattrans.network.TeleportRequestPayload;
 import com.badlyac.flattrans.network.TeleporterListPayload;
+import com.badlyac.flattrans.network.TeleporterRenamePayload;
 
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -72,10 +73,12 @@ public class FlatTrans {
         PayloadRegistrar registrar = event.registrar("1");
 
         registrar.playToClient(TeleporterListPayload.TYPE, TeleporterListPayload.STREAM_CODEC,
-                // 不用方法參照，避免在專用伺服器上載入客戶端類別
                 (payload, context) -> ClientPayloadHandler.handleTeleporterList(payload, context));
 
         registrar.playToServer(TeleportRequestPayload.TYPE, TeleportRequestPayload.STREAM_CODEC,
                 ServerPayloadHandler::handleTeleportRequest);
+
+        registrar.playToServer(TeleporterRenamePayload.TYPE, TeleporterRenamePayload.STREAM_CODEC,
+                ServerPayloadHandler::handleTeleporterRename);
     }
 }

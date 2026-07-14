@@ -12,6 +12,7 @@ import javax.annotation.Nullable;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
@@ -74,7 +75,7 @@ public class TeleporterBlock extends Block implements EntityBlock {
     @Override
     protected void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean movedByPiston) {
         if (!state.is(oldState.getBlock()) && level instanceof ServerLevel serverLevel) {
-            TeleporterSavedData.get(serverLevel).add(pos, "");
+            TeleporterSavedData.get(serverLevel).add(GlobalPos.of(serverLevel.dimension(), pos), "");
         }
     }
 
@@ -84,7 +85,7 @@ public class TeleporterBlock extends Block implements EntityBlock {
         if (level instanceof ServerLevel serverLevel) {
             Component customName = stack.get(DataComponents.CUSTOM_NAME);
             if (customName != null) {
-                TeleporterSavedData.get(serverLevel).setName(pos, customName.getString());
+                TeleporterSavedData.get(serverLevel).setName(GlobalPos.of(serverLevel.dimension(), pos), customName.getString());
             }
         }
     }
@@ -92,7 +93,7 @@ public class TeleporterBlock extends Block implements EntityBlock {
     @Override
     protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
         if (!state.is(newState.getBlock()) && level instanceof ServerLevel serverLevel) {
-            TeleporterSavedData.get(serverLevel).remove(pos);
+            TeleporterSavedData.get(serverLevel).remove(GlobalPos.of(serverLevel.dimension(), pos));
         }
         super.onRemove(state, level, pos, newState, movedByPiston);
     }
@@ -100,11 +101,16 @@ public class TeleporterBlock extends Block implements EntityBlock {
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hitResult) {
         if (level instanceof ServerLevel serverLevel && player instanceof ServerPlayer serverPlayer) {
-            List<TeleporterEntry> destinations = TeleporterSavedData.get(serverLevel).getEntries().stream()
-                    .filter(entry -> !entry.pos().equals(pos))
-                    .sorted(Comparator.comparingDouble(entry -> entry.pos().distSqr(pos)))
+            TeleporterSavedData data = TeleporterSavedData.get(serverLevel);
+            GlobalPos sourceGlobalPos = GlobalPos.of(serverLevel.dimension(), pos);
+            // 同維度的目的地優先，並依距離排序；跨維度的目的地排在後面，用維度 ID 分組
+            List<TeleporterEntry> destinations = data.getEntries().stream()
+                    .filter(entry -> !entry.pos().equals(sourceGlobalPos))
+                    .sorted(Comparator.<TeleporterEntry>comparingInt(entry -> entry.pos().dimension().equals(serverLevel.dimension()) ? 0 : 1)
+                            .thenComparing(entry -> entry.pos().dimension().location().toString())
+                            .thenComparingDouble(entry -> entry.pos().pos().distSqr(pos)))
                     .toList();
-            PacketDistributor.sendToPlayer(serverPlayer, new TeleporterListPayload(pos, destinations));
+            PacketDistributor.sendToPlayer(serverPlayer, new TeleporterListPayload(pos, data.getName(sourceGlobalPos), destinations));
         }
         return InteractionResult.sidedSuccess(level.isClientSide);
     }
