@@ -1,6 +1,7 @@
 package com.badlyac.flattrans.network;
 
 import com.badlyac.flattrans.FlatTrans;
+import com.badlyac.flattrans.block.TeleporterGroup;
 import com.badlyac.flattrans.data.TeleporterSavedData;
 
 import java.util.Set;
@@ -47,7 +48,11 @@ public class ServerPayloadHandler {
 
         level.playSound(null, source, SoundEvents.ENDERMAN_TELEPORT, SoundSource.BLOCKS, 1.0F, 1.0F);
         BlockPos targetPos = target.pos();
-        player.teleportTo(targetLevel, targetPos.getX() + 0.5, targetPos.getY() + 0.25, targetPos.getZ() + 0.5,
+        // 目的地若是矩形群組（多個 flat_trans 併起來），降落在整個矩形的中心，而不是錨點角落
+        TeleporterGroup.Group targetGroup = TeleporterGroup.floodFill(targetLevel, targetPos);
+        double landingX = targetGroup.isRectangle() ? targetGroup.centerX() : targetPos.getX() + 0.5;
+        double landingZ = targetGroup.isRectangle() ? targetGroup.centerZ() : targetPos.getZ() + 0.5;
+        player.teleportTo(targetLevel, landingX, targetPos.getY() + 0.25, landingZ,
                 Set.of(), player.getYRot(), player.getXRot());
         targetLevel.playSound(null, targetPos, SoundEvents.ENDERMAN_TELEPORT, SoundSource.BLOCKS, 1.0F, 1.0F);
     }
@@ -66,10 +71,16 @@ public class ServerPayloadHandler {
             return;
         }
 
+        // pos 可能只是矩形群組裡的一個方塊，改名要落在群組錨點的登記項上；不成矩形則沒有登記項可改
+        TeleporterGroup.Group group = TeleporterGroup.floodFill(level, pos);
+        if (!group.isRectangle()) {
+            return;
+        }
+
         String name = payload.name().trim();
         if (name.length() > MAX_NAME_LENGTH) {
             name = name.substring(0, MAX_NAME_LENGTH);
         }
-        TeleporterSavedData.get(level).setName(GlobalPos.of(level.dimension(), pos), name);
+        TeleporterSavedData.get(level).setName(GlobalPos.of(level.dimension(), group.anchor()), name);
     }
 }
