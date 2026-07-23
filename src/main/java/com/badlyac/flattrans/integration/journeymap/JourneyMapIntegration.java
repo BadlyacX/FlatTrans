@@ -12,7 +12,6 @@ import org.slf4j.LoggerFactory;
 
 import journeymap.api.v2.common.waypoint.Waypoint;
 import journeymap.api.v2.common.waypoint.WaypointFactory;
-import journeymap.api.v2.common.waypoint.WaypointGroup;
 import journeymap.api.v2.server.IServerAPI;
 
 import net.minecraft.core.BlockPos;
@@ -22,23 +21,24 @@ import net.minecraft.server.level.ServerLevel;
  * 橋接 JourneyMap 伺服端 API 的橋接類別。呼叫端必須先確認 journeymap 模組已載入
  * （見 {@code ModList.get().isLoaded("journeymap")}）才能參照本類別，
  * 否則在 JourneyMap 不存在時載入到 journeymap.* 類別會直接出錯。
+ * <p>
+ * 注意：不要使用 {@code WaypointGroup}／{@code IServerAPI.addGlobalGroup} 之類的群組 API——
+ * JourneyMap 1.21.1-6.0.1 的 {@code WaypointGroupImpl.addWaypoint} 內部會意外載入到
+ * 客戶端專屬的 {@code journeymap.client.Constants}，在真正的專用伺服器（非單人整合伺服器）
+ * 上會直接讓伺服器當機（RuntimeDistCleaner 阻擋載入 {@code net.minecraft.client.Minecraft}）。
  */
 public final class JourneyMapIntegration {
     private static final Logger LOGGER = LoggerFactory.getLogger("FlatTrans/JourneyMap");
     private static final String DEFAULT_NAME = "Teleporter";
-    private static final String DEFAULT_GROUP_NAME = "Default";
 
     @Nullable
     private static IServerAPI serverApi;
-    @Nullable
-    private static String defaultGroupGuid;
 
     private JourneyMapIntegration() {
     }
 
     static void setServerApi(@Nullable IServerAPI api) {
         serverApi = api;
-        defaultGroupGuid = null;
         LOGGER.info("JourneyMap server plugin {}", api == null ? "detached" : "initialized");
     }
 
@@ -53,11 +53,6 @@ public final class JourneyMapIntegration {
                     .orElseGet(() -> WaypointFactory.createWaypoint(FlatTrans.MODID, anchor, displayName, level.dimension(), true));
             waypoint.setName(displayName);
             waypoint.setEnabled(true);
-
-            WaypointGroup group = resolveDefaultGroup();
-            if (group != null && group.addWaypoint(waypoint)) {
-                serverApi.addGlobalGroup(group);
-            }
 
             serverApi.addGlobalWaypoint(waypoint);
             LOGGER.info("Added/updated JourneyMap waypoint '{}' at {} in {}", displayName, anchor, level.dimension().location());
@@ -92,30 +87,5 @@ public final class JourneyMapIntegration {
                 .filter(waypoint -> pos.equals(waypoint.getBlockPos()))
                 .filter(waypoint -> dimension.equals(waypoint.getPrimaryDimension()))
                 .findFirst();
-    }
-
-    /** 沒有明確分類需求時，所有傳送裝置的標記都歸在同一個「Default」群組底下，方便在地圖上統一管理/顯示。 */
-    @Nullable
-    private static WaypointGroup resolveDefaultGroup() {
-        if (defaultGroupGuid != null) {
-            WaypointGroup cached = serverApi.getGlobalGroup(defaultGroupGuid);
-            if (cached != null) {
-                return cached;
-            }
-        }
-
-        WaypointGroup found = serverApi.getAllGlobalGroups().stream()
-                .filter(group -> FlatTrans.MODID.equals(group.getModId()))
-                .filter(group -> DEFAULT_GROUP_NAME.equals(group.getName()))
-                .findFirst()
-                .orElse(null);
-        if (found == null) {
-            found = WaypointFactory.createWaypointGroup(FlatTrans.MODID, DEFAULT_GROUP_NAME);
-            found.setPersistent(true);
-            found.setEnabled(true);
-            serverApi.addGlobalGroup(found);
-        }
-        defaultGroupGuid = found.getGuid();
-        return found;
     }
 }
