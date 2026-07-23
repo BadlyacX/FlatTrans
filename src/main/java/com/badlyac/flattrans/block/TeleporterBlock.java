@@ -3,6 +3,7 @@ package com.badlyac.flattrans.block;
 import com.badlyac.flattrans.FlatTrans;
 import com.badlyac.flattrans.blockentity.TeleporterBlockEntity;
 import com.badlyac.flattrans.data.TeleporterSavedData;
+import com.badlyac.flattrans.integration.journeymap.JourneyMapIntegration;
 import com.badlyac.flattrans.network.TeleporterEntry;
 import com.badlyac.flattrans.network.TeleporterListPayload;
 
@@ -37,6 +38,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
+import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 /**
@@ -81,7 +83,8 @@ public class TeleporterBlock extends Block implements EntityBlock {
     @Override
     protected void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean movedByPiston) {
         if (!state.is(oldState.getBlock()) && level instanceof ServerLevel serverLevel) {
-            refreshGroup(serverLevel, TeleporterSavedData.get(serverLevel), pos);
+            // 接上新方塊後還沒湊成矩形之前，保留現有登記項不動，避免中途把已有的名字洗掉
+            refreshGroup(serverLevel, TeleporterSavedData.get(serverLevel), pos, true);
         }
     }
 
@@ -105,6 +108,7 @@ public class TeleporterBlock extends Block implements EntityBlock {
         if (!state.is(newState.getBlock()) && level instanceof ServerLevel serverLevel) {
             TeleporterSavedData data = TeleporterSavedData.get(serverLevel);
             // pos 自己可能就是（單一方塊或矩形群組的）錨點，一律先移除
+            // 注意：挖掉方塊不會動到 JourneyMap 上的標記，標記只能透過選單裡的 X 按鈕手動刪除
             data.remove(GlobalPos.of(serverLevel.dimension(), pos));
 
             // 剩下的鄰居可能因此分裂成數個群組、或不再是矩形，逐一重新計算
@@ -114,7 +118,9 @@ public class TeleporterBlock extends Block implements EntityBlock {
                 if (processed.contains(neighborPos) || !level.getBlockState(neighborPos).is(FlatTrans.TELEPORTER.get())) {
                     continue;
                 }
-                processed.addAll(refreshGroup(serverLevel, data, neighborPos).positions());
+                // 破壞後的殘餘形狀若不再是矩形，就不該繼續視為有效傳送點，因此這裡一律清掉舊登記；
+                // 但傳 placing=false 讓 JourneyMap 標記完全不受影響
+                processed.addAll(refreshGroup(serverLevel, data, neighborPos, false).positions());
             }
         }
         super.onRemove(state, level, pos, newState, movedByPiston);
@@ -124,9 +130,45 @@ public class TeleporterBlock extends Block implements EntityBlock {
      * 重新計算 start 所在的連通群組：先移除群組內所有既有的登記項（可能是先前各自獨立的方塊，
      * 也可能是先前已合併的矩形），再依目前的形狀決定是否要用群組錨點重新登記一筆。
      * 名稱優先取自錨點原本的登記，沒有的話才退而求其次取群組內任一個非空名稱。
+     * <p>
+     * {@code placing} 為 true 時（放置方塊觸發）：若目前形狀還不是矩形（例如正在接新方塊、尚未湊滿），
+     * 不會直接清掉登記、讓原本的名字/註冊維持原樣，等真的接成矩形時才統一清掉重登；
+     * 但如果這個連通區塊剛好同時併入了不只一筆既有登記（例如把兩個各自獨立、各自已命名的傳送裝置
+     * 直接接在一起），仍會立刻只保留其中一筆（優先留有名字的那筆），其餘的登記與地圖標記都會清掉，
+     * 避免同一塊連通區域在地圖上同時留下好幾個標記。這個情境下也會同步更新 JourneyMap 標記。
+     * <p>
+     * {@code placing} 為 false 時（破壞方塊觸發）：一律照舊清掉 {@link TeleporterSavedData} 的登記，
+     * 維持「非矩形一律不算有效傳送點」的規則；但完全不會動 JourneyMap 上的標記——
+     * 標記只能由玩家在傳送裝置選單裡按住 X 手動刪除，破壞方塊不會自動移除。
      */
-    private static TeleporterGroup.Group refreshGroup(ServerLevel level, TeleporterSavedData data, BlockPos start) {
+    private static TeleporterGroup.Group refreshGroup(ServerLevel level, TeleporterSavedData data, BlockPos start,
+                                                       boolean placing) {
         TeleporterGroup.Group group = TeleporterGroup.floodFill(level, start);
+        boolean journeyMapLoaded = placing && ModList.get().isLoaded("journeymap");
+
+        if (placing && !group.isRectangle()) {
+            List<BlockPos> registered = group.positions().stream()
+                    .filter(memberPos -> data.contains(GlobalPos.of(level.dimension(), memberPos)))
+                    .sorted(Comparator.comparingLong(BlockPos::asLong))
+                    .toList();
+            if (registered.size() > 1) {
+                BlockPos keep = registered.stream()
+                        .filter(memberPos -> !data.getName(GlobalPos.of(level.dimension(), memberPos)).isEmpty())
+                        .findFirst()
+                        .orElse(registered.get(0));
+                for (BlockPos memberPos : registered) {
+                    if (memberPos.equals(keep)) {
+                        continue;
+                    }
+                    data.remove(GlobalPos.of(level.dimension(), memberPos));
+                    if (journeyMapLoaded) {
+                        JourneyMapIntegration.removeWaypoint(level, memberPos);
+                    }
+                }
+            }
+            return group;
+        }
+
         BlockPos anchor = group.anchor();
 
         List<BlockPos> members = new ArrayList<>(group.positions());
@@ -145,10 +187,17 @@ public class TeleporterBlock extends Block implements EntityBlock {
                 }
             }
             data.remove(memberGlobalPos);
+            if (journeyMapLoaded) {
+                JourneyMapIntegration.removeWaypoint(level, memberPos);
+            }
         }
 
         if (group.isRectangle()) {
-            data.add(GlobalPos.of(level.dimension(), anchor), anchorName.isEmpty() ? fallbackName : anchorName);
+            String finalName = anchorName.isEmpty() ? fallbackName : anchorName;
+            data.add(GlobalPos.of(level.dimension(), anchor), finalName);
+            if (journeyMapLoaded) {
+                JourneyMapIntegration.addOrUpdateWaypoint(level, anchor, finalName);
+            }
         }
         return group;
     }

@@ -5,6 +5,7 @@ import com.badlyac.flattrans.blockentity.TeleporterBlockEntity;
 import com.badlyac.flattrans.client.ClientPayloadHandler;
 import com.badlyac.flattrans.network.ServerPayloadHandler;
 import com.badlyac.flattrans.network.TeleportRequestPayload;
+import com.badlyac.flattrans.network.TeleporterDeletePayload;
 import com.badlyac.flattrans.network.TeleporterListPayload;
 import com.badlyac.flattrans.network.TeleporterRenamePayload;
 
@@ -80,5 +81,8 @@ public class FlatTrans {
 
         registrar.playToServer(TeleporterRenamePayload.TYPE, TeleporterRenamePayload.STREAM_CODEC,
                 ServerPayloadHandler::handleTeleporterRename);
+
+        registrar.playToServer(TeleporterDeletePayload.TYPE, TeleporterDeletePayload.STREAM_CODEC,
+                ServerPayloadHandler::handleTeleporterDelete);
     }
 }

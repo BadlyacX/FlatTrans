@@ -28,6 +28,19 @@ sourceSets.main.resources {
 
 repositories {
     // Add here additional repositories if required by some of the dependencies below.
+
+    // JourneyMap API releases (see https://github.com/TeamJM/journeymap-api)
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = "JourneyMap"
+                url = "https://maven.blamejared.com"
+            }
+        }
+        filter {
+            includeGroup "info.journeymap"
+        }
+    }
 }
 
 base {
@@ -118,6 +131,10 @@ configurations {
 }
 
 dependencies {
+    // JourneyMap API: compile-time only soft dependency, no runtime jar required.
+    // The plugin class is discovered by JourneyMap itself when it's present at runtime.
+    compileOnly "info.journeymap:journeymap-api-neoforge:${journeymap_api_version}"
+
     // Example optional mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
     // compileOnly "mezz.jei:jei-${mc_version}-common-api:${jei_version}"

@@ -3,6 +3,7 @@ package com.badlyac.flattrans.network;
 import com.badlyac.flattrans.FlatTrans;
 import com.badlyac.flattrans.block.TeleporterGroup;
 import com.badlyac.flattrans.data.TeleporterSavedData;
+import com.badlyac.flattrans.integration.journeymap.JourneyMapIntegration;
 
 import java.util.Set;
 
@@ -15,6 +16,7 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.RelativeMovement;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public class ServerPayloadHandler {
@@ -82,5 +84,31 @@ public class ServerPayloadHandler {
             name = name.substring(0, MAX_NAME_LENGTH);
         }
         TeleporterSavedData.get(level).setName(GlobalPos.of(level.dimension(), group.anchor()), name);
+        if (ModList.get().isLoaded("journeymap")) {
+            JourneyMapIntegration.addOrUpdateWaypoint(level, group.anchor(), name);
+        }
+    }
+
+    public static void handleTeleporterDelete(TeleporterDeletePayload payload, IPayloadContext context) {
+        if (!(context.player() instanceof ServerPlayer player)) {
+            return;
+        }
+        ServerLevel level = player.serverLevel();
+        BlockPos source = payload.source();
+        GlobalPos target = payload.target();
+
+        if (player.distanceToSqr(Vec3.atCenterOf(source)) > MAX_USE_DISTANCE_SQ) {
+            return;
+        }
+        if (!level.getBlockState(source).is(FlatTrans.TELEPORTER.get())) {
+            return;
+        }
+
+        TeleporterSavedData.get(level).remove(target);
+
+        ServerLevel targetLevel = player.server.getLevel(target.dimension());
+        if (targetLevel != null && ModList.get().isLoaded("journeymap")) {
+            JourneyMapIntegration.removeWaypoint(targetLevel, target.pos());
+        }
     }
 }
